@@ -1,0 +1,1 @@
+-- Vedi messaggio chat per schema completo 01, oppure esegui gli script 02-06 dopo aver creato le tabelle base dal riepilogo.
