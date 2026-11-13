@@ -161,7 +161,14 @@ export default function Login() {
               />
               <span>
                 Ho letto e accetto l'{' '}
-                <Link to="/privacy" className="text-teal-700 underline" target="_blank">
+               <a
+  href="https://smarino.jimdofree.com/privacy/"
+  className="text-teal-700 underline"
+  target="_blank"
+  rel="noreferrer"
+>
+  informativa privacy
+</a>
                   informativa privacy
                 </Link>{' '}
                 (GDPR)
@@ -183,11 +190,14 @@ export default function Login() {
         </div>
       </div>
 
-      <footer className="text-center text-xs text-slate-400 py-6 space-y-1">
-        <div>© {new Date().getFullYear()} Salvatore Marino – Amministrazioni Condominiali</div>
-        <Link to="/privacy" className="text-teal-700 hover:underline">
-          Informativa privacy
-        </Link>
+     <a
+  href="https://smarino.jimdofree.com/privacy/"
+  className="text-teal-700 hover:underline"
+  target="_blank"
+  rel="noreferrer"
+>
+  Informativa privacy
+</a>
       </footer>
       <InstallPrompt />
     </div>
