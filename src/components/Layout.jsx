@@ -31,7 +31,7 @@ export default function Layout() {
       { to: '/app/documenti', icon: FileText, label: 'Documenti' },
       { to: '/app/convocazioni', icon: ClipboardList, label: 'Convocazioni' },
       { to: '/app/segnalazioni', icon: AlertTriangle, label: 'Segnalazioni' },
-      { to: '/app/comunicazioni', icon: MessageSquare, label: 'Messaggi' },
+     
     )
   }
 

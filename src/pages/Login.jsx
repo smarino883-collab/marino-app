@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Building2, Wrench, Shield } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import InstallPrompt from '../components/InstallPrompt'
 
 export default function Login() {
@@ -16,18 +15,6 @@ export default function Login() {
   const { loginWithCode, loginFornitore, loginAdmin } = useAuth()
   const navigate = useNavigate()
 
-  async function saveConsent(ruolo, userId, sessionKey) {
-    try {
-      await supabase.from('privacy_consents').insert({
-        user_id: userId || null,
-        session_key: sessionKey || null,
-        ruolo,
-        privacy_version: '2026-11',
-      })
-    } catch (_) {}
-    localStorage.setItem('marino_privacy_accepted', '2026-11')
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -36,27 +23,20 @@ export default function Login() {
       return
     }
     setLoading(true)
-
     try {
       let result
       if (tab === 'condomino') {
         result = await loginWithCode(codice)
         if (result.error) throw new Error(result.error)
-        await saveConsent('condomino', null, `condo_${result.data?.condominio?.id}`)
-        if (result.data?.needsContact) {
-          navigate('/app/completa-profilo')
-        } else {
-          navigate('/app')
-        }
+        if (result.data?.needsContact) navigate('/app/completa-profilo')
+        else navigate('/app')
       } else if (tab === 'fornitore') {
-        result = await loginFornitore(email, password)
+        result = await loginFornitore(codice)
         if (result.error) throw new Error(result.error)
-        await saveConsent('fornitore', result.data?.user?.id, null)
         navigate('/fornitore')
       } else {
         result = await loginAdmin(email, password)
         if (result.error) throw new Error(result.error)
-        await saveConsent('admin', result.data?.user?.id, null)
         navigate('/admin')
       }
     } catch (err) {
@@ -72,8 +52,8 @@ export default function Login() {
         <div className="mb-4 flex justify-center">
           <div className="bg-white rounded-2xl p-3 shadow-md">
             <img
-              src={'/logo.png?t=' + Date.now()}
-              alt="Logo Marino Amministrazioni"
+              src="/logo.png"
+              alt="Logo"
               style={{ height: 80, width: 'auto', maxWidth: 240, display: 'block' }}
             />
           </div>
@@ -93,10 +73,15 @@ export default function Login() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTab(t.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition ${
-                  tab === t.id ? 'bg-white shadow text-teal-700' : 'text-slate-500'
-                }`}
+                onClick={() => {
+                  setTab(t.id)
+                  setError('')
+                  setCodice('')
+                }}
+                className={
+                  'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition ' +
+                  (tab === t.id ? 'bg-white shadow text-teal-700' : 'text-slate-500')
+                }
               >
                 <t.icon size={16} />
                 {t.label}
@@ -105,29 +90,7 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {tab === 'condomino' ? (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Codice di accesso del condominio
-                </label>
-                <input
-                  type="text"
-                  value={codice}
-                  onChange={(e) =>
-                    setCodice(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))
-                  }
-                  placeholder="Es. K7M2P9QX"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center text-xl tracking-[0.25em] font-mono uppercase"
-                  required
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <p className="text-xs text-slate-400 mt-2 text-center">
-                  Codice alfanumerico fornito dall'amministratore
-                </p>
-              </div>
-            ) : (
+            {tab === 'admin' ? (
               <>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
@@ -150,6 +113,26 @@ export default function Login() {
                   />
                 </div>
               </>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  {tab === 'condomino' ? 'Codice condominio' : 'Codice fornitore'}
+                </label>
+                <input
+                  type="text"
+                  value={codice}
+                  onChange={(e) =>
+                    setCodice(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))
+                  }
+                  placeholder={tab === 'condomino' ? 'Es. K7M2P9QX' : 'Es. FORN1234'}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-center text-xl tracking-[0.2em] font-mono uppercase"
+                  required
+                  autoComplete="off"
+                />
+                <p className="text-xs text-slate-400 mt-2 text-center">
+                  Codice fornito dall&apos;amministratore
+                </p>
+              </div>
             )}
 
             <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
@@ -157,32 +140,30 @@ export default function Login() {
                 type="checkbox"
                 checked={privacyOk}
                 onChange={(e) => setPrivacyOk(e.target.checked)}
-                className="mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                className="mt-1"
               />
               <span>
-                Ho letto e accetto l'{' '}
-               <a
-  href="https://smarino.jimdofree.com/privacy/"
-  className="text-teal-700 underline"
-  target="_blank"
-  rel="noreferrer"
->
-  informativa privacy
-</a>
+                Ho letto e accetto l&apos;{' '}
+                <a
+                  href="https://smarino.jimdofree.com/privacy/"
+                  className="text-teal-700 underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   informativa privacy
-                </Link>{' '}
+                </a>{' '}
                 (GDPR)
               </span>
             </label>
 
-            {error && (
+            {error ? (
               <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-xl">{error}</div>
-            )}
+            ) : null}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-medium py-3 rounded-xl transition"
+              className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-medium py-3 rounded-xl"
             >
               {loading ? 'Accesso in corso...' : 'Accedi'}
             </button>
@@ -190,14 +171,16 @@ export default function Login() {
         </div>
       </div>
 
-     <a
-  href="https://smarino.jimdofree.com/privacy/"
-  className="text-teal-700 hover:underline"
-  target="_blank"
-  rel="noreferrer"
->
-  Informativa privacy
-</a>
+      <footer className="text-center text-xs text-slate-400 py-6 space-y-1">
+        <div>© {new Date().getFullYear()} Salvatore Marino – Amministrazioni Condominiali</div>
+        <a
+          href="https://smarino.jimdofree.com/privacy/"
+          className="text-teal-700 hover:underline"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Informativa privacy
+        </a>
       </footer>
       <InstallPrompt />
     </div>

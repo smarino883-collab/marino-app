@@ -42,7 +42,7 @@ export function AuthProvider({ children }) {
     const { data: condo, error } = await supabase
       .from('condomini')
       .select('*')
-      .eq('codice_accesso', codice.trim().replace(/\s/g, '').toUpperCase())
+      .eq('codice_accesso', (codice || '').trim().replace(/\s/g, '').toUpperCase())
       .eq('attivo', true)
       .single()
 
@@ -51,118 +51,57 @@ export function AuthProvider({ children }) {
     }
 
     const sessionId = makeSessionId()
-    // recupera contatto salvato in passato su questo browser per lo stesso condominio
     let contatto = null
     try {
-      const key = `marino_contatto_${condo.id}`
-      const raw = localStorage.getItem(key)
+      const raw = localStorage.getItem('marino_contatto_' + condo.id)
       if (raw) contatto = JSON.parse(raw)
     } catch (_) {}
 
-    // se ha un'email salvata, verifica che non sia stata revocata
-    if (contatto?.email) {
-      try {
-        const { data: rows } = await supabase
-          .from('condomini_contatti')
-          .select('id, attivo')
-          .eq('condominio_id', condo.id)
-          .eq('email', contatto.email.toLowerCase())
-          .order('created_at', { ascending: false })
-          .limit(5)
-        const blocked = (rows || []).some((r) => r.attivo === false)
-        const anyActive = (rows || []).some((r) => r.attivo !== false)
-        if (blocked && !anyActive) {
-          localStorage.removeItem(`marino_contatto_${condo.id}`)
-          return { error: 'Accesso revocato per questo contatto. Contatta l\'amministratore.' }
-        }
-      } catch (_) {}
-    }
-
-    const hasEmail = !!(contatto?.email)
+    const hasEmail = !!(contatto && contatto.email)
     const session = {
       user: { id: sessionId, tipo: 'condomino' },
       profile: {
         type: 'condomino',
-        nome: contatto?.nome || '',
-        email: contatto?.email || '',
-        unita: contatto?.unita || '',
+        nome: (contatto && contatto.nome) || '',
+        email: (contatto && contatto.email) || '',
+        unita: (contatto && contatto.unita) || '',
         session_key: sessionId,
       },
       condominio: condo,
       needsContact: !hasEmail,
     }
-
     persist(session)
     return { data: session }
   }
 
   const saveCondominoContact = async ({ nome, email, unita, skip }) => {
-    if (!condominio || profile?.type !== 'condomino') {
+    if (!condominio || !profile || profile.type !== 'condomino') {
       return { error: 'Sessione non valida' }
     }
-
     if (skip) {
-      const session = {
-        user,
-        profile: { ...profile },
-        condominio,
-        needsContact: false,
-      }
+      const session = { user, profile: { ...profile }, condominio, needsContact: false }
       persist(session)
-      localStorage.setItem(`marino_contatto_skip_${condominio.id}`, '1')
       return { data: session }
     }
-
     const emailClean = (email || '').trim().toLowerCase()
-    if (emailClean && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
-      return { error: 'Email non valida' }
-    }
-
-    if (emailClean) {
-      try {
-        const { data: rows } = await supabase
-          .from('condomini_contatti')
-          .select('id, attivo')
-          .eq('condominio_id', condominio.id)
-          .eq('email', emailClean)
-          .order('created_at', { ascending: false })
-          .limit(5)
-        const blocked = (rows || []).some((r) => r.attivo === false)
-        const anyActive = (rows || []).some((r) => r.attivo !== false)
-        if (blocked && !anyActive) {
-          return { error: 'Questa email risulta revocata. Contatta l\'amministratore.' }
-        }
-      } catch (_) {}
-    }
-
     const payload = {
-      condominio_id: condominio.id,
-      session_key: user?.id || profile?.session_key,
-      nome: (nome || '').trim() || null,
-      email: emailClean || null,
-      unita: (unita || '').trim() || null,
-      updated_at: new Date().toISOString(),
+      nome: (nome || '').trim(),
+      email: emailClean,
+      unita: (unita || '').trim(),
     }
-
     try {
-      await supabase.from('condomini_contatti').insert(payload)
-    } catch (_) {
-      // tabella assente: continua solo in locale
-    }
-
-    localStorage.setItem(
-      `marino_contatto_${condominio.id}`,
-      JSON.stringify({ nome: payload.nome, email: payload.email, unita: payload.unita })
-    )
-
+      localStorage.setItem('marino_contatto_' + condominio.id, JSON.stringify(payload))
+      await supabase.from('condomini_contatti').insert({
+        condominio_id: condominio.id,
+        nome: payload.nome || null,
+        email: payload.email || null,
+        unita: payload.unita || null,
+        attivo: true,
+      })
+    } catch (_) {}
     const session = {
       user,
-      profile: {
-        ...profile,
-        nome: payload.nome || profile.nome,
-        email: payload.email || '',
-        unita: payload.unita || '',
-      },
+      profile: { ...profile, ...payload },
       condominio,
       needsContact: false,
     }
@@ -170,16 +109,30 @@ export function AuthProvider({ children }) {
     return { data: session }
   }
 
-  const loginFornitore = async (email, password) => {
+    const loginFornitore = async (codice) => {
+    const code = (codice || '').trim().replace(/\s/g, '').toUpperCase()
+    if (!code) {
+      return { error: 'Inserisci il codice fornitore' }
+    }
+    if (code.length < 4) {
+      return { error: 'Codice troppo corto' }
+    }
+    if (!/^[A-Z0-9]+$/.test(code)) {
+      return { error: 'Il codice puo contenere solo lettere e numeri' }
+    }
+
     const { data: fornitore, error } = await supabase
       .from('fornitori')
       .select('*')
-      .eq('email', email.trim())
+      .eq('codice_accesso', code)
       .eq('attivo', true)
-      .single()
+      .maybeSingle()
 
-    if (error || !fornitore) {
-      return { error: 'Credenziali non valide' }
+    if (error) {
+      return { error: 'Errore di verifica codice. Riprova.' }
+    }
+    if (!fornitore) {
+      return { error: 'Codice non valido o fornitore non attivo' }
     }
 
     const session = {
@@ -193,8 +146,24 @@ export function AuthProvider({ children }) {
   }
 
   const loginAdmin = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error: error.message }
+    const em = (email || '').trim().toLowerCase()
+    const pw = password || ''
+
+    const bootEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase()
+    const bootPass = import.meta.env.VITE_ADMIN_PASSWORD || ''
+    if (bootEmail && bootPass && em === bootEmail && pw === bootPass) {
+      const session = {
+        user: { id: 'bootstrap-admin', email: em, tipo: 'admin' },
+        profile: { type: 'admin', nome: 'Amministratore', email: em },
+        condominio: null,
+        needsContact: false,
+      }
+      persist(session)
+      return { data: session }
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
+    if (error) return { error: error.message || 'Credenziali non valide' }
 
     const { data: admin } = await supabase
       .from('utenti_admin')
@@ -219,7 +188,9 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     localStorage.removeItem('marino_session')
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (_) {}
     setUser(null)
     setProfile(null)
     setCondominio(null)
