@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { Calendar as CalIcon, ChevronLeft, ChevronRight } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from 'date-fns'
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameDay,
+  addMonths,
+  subMonths,
+  isToday,
+} from 'date-fns'
 import { it } from 'date-fns/locale'
 
 const TIPO_COLORI = {
   assemblea: 'bg-purple-500',
+  convocazione: 'bg-purple-500',
   scadenza_rata: 'bg-red-500',
   manutenzione: 'bg-amber-500',
   altro: 'bg-teal-500',
@@ -14,6 +24,7 @@ const TIPO_COLORI = {
 
 const TIPO_LABEL = {
   assemblea: 'Assemblea',
+  convocazione: 'Convocazione',
   scadenza_rata: 'Scadenza rata',
   manutenzione: 'Manutenzione',
   altro: 'Altro',
@@ -34,14 +45,44 @@ export default function Calendario() {
     setLoading(true)
     const start = startOfMonth(currentMonth)
     const end = endOfMonth(currentMonth)
-    const { data } = await supabase
-      .from('eventi')
-      .select('*')
-      .eq('condominio_id', condominio.id)
-      .gte('data_inizio', start.toISOString())
-      .lte('data_inizio', end.toISOString())
-      .order('data_inizio')
-    setEventi(data || [])
+
+    const [evRes, convRes] = await Promise.all([
+      supabase
+        .from('eventi')
+        .select('*')
+        .eq('condominio_id', condominio.id)
+        .gte('data_inizio', start.toISOString())
+        .lte('data_inizio', end.toISOString())
+        .order('data_inizio'),
+      supabase
+        .from('convocazioni')
+        .select('id, titolo, data_assemblea, luogo, note')
+        .eq('condominio_id', condominio.id)
+        .not('data_assemblea', 'is', null)
+        .gte('data_assemblea', start.toISOString())
+        .lte('data_assemblea', end.toISOString()),
+    ])
+
+    const fromEventi = (evRes.data || []).map((e) => ({
+      id: 'e-' + e.id,
+      titolo: e.titolo,
+      data_inizio: e.data_inizio,
+      tipo: e.tipo || 'altro',
+      descrizione: e.descrizione || '',
+    }))
+
+    const fromConv = (convRes.data || []).map((c) => ({
+      id: 'c-' + c.id,
+      titolo: c.titolo,
+      data_inizio: c.data_assemblea,
+      tipo: 'convocazione',
+      descrizione: [c.luogo, c.note].filter(Boolean).join(' · '),
+    }))
+
+    const merged = fromEventi.concat(fromConv).sort(function (a, b) {
+      return new Date(a.data_inizio) - new Date(b.data_inizio)
+    })
+    setEventi(merged)
     setLoading(false)
   }
 
@@ -49,8 +90,6 @@ export default function Calendario() {
     start: startOfMonth(currentMonth),
     end: endOfMonth(currentMonth),
   })
-
-  // Padding per allineare al lunedì
   const startPad = (startOfMonth(currentMonth).getDay() + 6) % 7
   const padDays = Array(startPad).fill(null)
 
@@ -58,24 +97,21 @@ export default function Calendario() {
     ? eventi.filter((e) => isSameDay(new Date(e.data_inizio), selectedDay))
     : []
 
-  const prossimi = eventi
-    .filter((e) => new Date(e.data_inizio) >= new Date())
-    .slice(0, 5)
+  const prossimi = eventi.filter((e) => new Date(e.data_inizio) >= new Date()).slice(0, 8)
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-slate-800">Calendario</h1>
 
-      {/* Navigazione mese */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
+          <button type="button" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
             <ChevronLeft size={20} />
           </button>
           <h2 className="font-semibold capitalize">
             {format(currentMonth, 'MMMM yyyy', { locale: it })}
           </h2>
-          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
+          <button type="button" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
             <ChevronRight size={20} />
           </button>
         </div>
@@ -87,39 +123,50 @@ export default function Calendario() {
         </div>
 
         <div className="grid grid-cols-7 gap-1">
-          {padDays.map((_, i) => <div key={`pad-${i}`} />)}
+          {padDays.map((_, i) => (
+            <div key={'pad-' + i} />
+          ))}
           {days.map((day) => {
             const dayEventi = eventi.filter((e) => isSameDay(new Date(e.data_inizio), day))
             const selected = selectedDay && isSameDay(day, selectedDay)
             return (
               <button
                 key={day.toISOString()}
+                type="button"
                 onClick={() => setSelectedDay(day)}
-                className={`relative aspect-square rounded-lg text-sm flex flex-col items-center justify-center transition ${
-                  selected ? 'bg-teal-600 text-white' :
-                  isToday(day) ? 'bg-teal-50 text-teal-700 font-semibold' :
-                  'hover:bg-slate-50'
-                }`}
+                className={
+                  'relative aspect-square rounded-lg text-sm flex flex-col items-center justify-center transition ' +
+                  (selected
+                    ? 'bg-teal-600 text-white'
+                    : isToday(day)
+                      ? 'bg-teal-50 text-teal-700 font-semibold'
+                      : 'hover:bg-slate-50')
+                }
               >
                 {format(day, 'd')}
-                {dayEventi.length > 0 && (
+                {dayEventi.length > 0 ? (
                   <div className="flex gap-0.5 mt-0.5">
-                    {dayEventi.slice(0, 3).map((e, i) => (
-                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : TIPO_COLORI[e.tipo] || 'bg-teal-500'}`} />
+                    {dayEventi.slice(0, 3).map((e, idx) => (
+                      <div
+                        key={idx}
+                        className={
+                          'w-1.5 h-1.5 rounded-full ' +
+                          (selected ? 'bg-white' : TIPO_COLORI[e.tipo] || 'bg-teal-500')
+                        }
+                      />
                     ))}
                   </div>
-                )}
+                ) : null}
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* Eventi del giorno selezionato */}
-      {selectedDay && (
+      {selectedDay ? (
         <section>
           <h2 className="text-sm font-semibold text-slate-500 uppercase mb-3">
-            {format(selectedDay, "d MMMM yyyy", { locale: it })}
+            {format(selectedDay, 'd MMMM yyyy', { locale: it })}
           </h2>
           {eventiDelGiorno.length === 0 ? (
             <div className="bg-white rounded-xl p-4 text-center text-slate-400 text-sm">Nessun evento</div>
@@ -127,20 +174,21 @@ export default function Calendario() {
             <div className="space-y-2">
               {eventiDelGiorno.map((e) => (
                 <div key={e.id} className="bg-white rounded-xl p-4 border border-slate-100 flex gap-3">
-                  <div className={`w-1 rounded-full ${TIPO_COLORI[e.tipo] || 'bg-teal-500'}`} />
+                  <div className={'w-1 rounded-full ' + (TIPO_COLORI[e.tipo] || 'bg-teal-500')} />
                   <div>
                     <h3 className="font-medium">{e.titolo}</h3>
-                    <p className="text-xs text-slate-500 capitalize">{TIPO_LABEL[e.tipo]} · {format(new Date(e.data_inizio), 'HH:mm')}</p>
-                    {e.descrizione && <p className="text-sm text-slate-600 mt-1">{e.descrizione}</p>}
+                    <p className="text-xs text-slate-500">
+                      {TIPO_LABEL[e.tipo] || e.tipo} · {format(new Date(e.data_inizio), 'HH:mm')}
+                    </p>
+                    {e.descrizione ? <p className="text-sm text-slate-600 mt-1">{e.descrizione}</p> : null}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </section>
-      )}
+      ) : null}
 
-      {/* Prossimi eventi */}
       <section>
         <h2 className="text-sm font-semibold text-slate-500 uppercase mb-3 flex items-center gap-2">
           <CalIcon size={14} /> Prossimi appuntamenti
@@ -154,12 +202,14 @@ export default function Calendario() {
             {prossimi.map((e) => (
               <div key={e.id} className="bg-white rounded-xl p-4 border border-slate-100 flex gap-4">
                 <div className="text-center shrink-0 w-12">
-                  <div className="text-xs text-teal-600 font-medium uppercase">{format(new Date(e.data_inizio), 'MMM', { locale: it })}</div>
+                  <div className="text-xs text-teal-600 font-medium uppercase">
+                    {format(new Date(e.data_inizio), 'MMM', { locale: it })}
+                  </div>
                   <div className="text-xl font-bold">{format(new Date(e.data_inizio), 'd')}</div>
                 </div>
                 <div>
                   <h3 className="font-medium">{e.titolo}</h3>
-                  <p className="text-xs text-slate-500 capitalize">{TIPO_LABEL[e.tipo]}</p>
+                  <p className="text-xs text-slate-500">{TIPO_LABEL[e.tipo] || e.tipo}</p>
                 </div>
               </div>
             ))}

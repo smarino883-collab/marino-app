@@ -55,7 +55,6 @@ function AppRoutes() {
         </PrivateRoute>
       }>
         <Route index element={<Home />} />
-        <Route path="segnalazioni" element={<Segnalazioni />} />
         <Route path="calendario" element={<Calendario />} />
         <Route path="documenti" element={<Documenti />} />
         <Route path="convocazioni" element={<Convocazioni />} />

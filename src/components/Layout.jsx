@@ -30,8 +30,7 @@ export default function Layout() {
       { to: '/app/calendario', icon: Calendar, label: 'Calendario' },
       { to: '/app/documenti', icon: FileText, label: 'Documenti' },
       { to: '/app/convocazioni', icon: ClipboardList, label: 'Convocazioni' },
-      { to: '/app/segnalazioni', icon: AlertTriangle, label: 'Segnalazioni' },
-     
+          
     )
   }
 

@@ -15,7 +15,7 @@ const CATEGORIE = {
 }
 
 export default function Documenti() {
-  const { condominio, user } = useAuth()
+  const { condominio } = useAuth()
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
@@ -33,7 +33,6 @@ export default function Documenti() {
       .from('documenti')
       .select('*')
       .eq('condominio_id', condominio.id)
-      .eq('is_pubblico', true)
       .order('created_at', { ascending: false })
     setDocs(data || [])
     setLoading(false)
@@ -45,28 +44,31 @@ export default function Documenti() {
     setUploading(true)
 
     const ext = form.file.name.split('.').pop()
-    const path = `${condominio.id}/${Date.now()}.${ext}`
+    const path = condominio.id + '/' + Date.now() + '.' + ext
 
-    const { error: upErr } = await supabase.storage
-      .from('documenti')
-      .upload(path, form.file)
-
+    const { error: upErr } = await supabase.storage.from('documenti').upload(path, form.file)
     if (upErr) {
       alert('Errore upload: ' + upErr.message)
       setUploading(false)
       return
     }
 
-    await supabase.from('documenti').insert({
+    const { error: insErr } = await supabase.from('documenti').insert({
       condominio_id: condominio.id,
       titolo: form.titolo || form.file.name,
       categoria: form.categoria,
       file_path: path,
       file_nome: form.file.name,
       file_size: form.file.size,
-      caricato_da: user.id,
-      is_pubblico: false, // i documenti dei condomini non sono pubblici di default
+      caricato_da: null,
+      is_pubblico: false,
     })
+
+    if (insErr) {
+      alert('Errore salvataggio: ' + insErr.message)
+      setUploading(false)
+      return
+    }
 
     setUploading(false)
     setShowUpload(false)
@@ -75,9 +77,7 @@ export default function Documenti() {
   }
 
   async function download(doc) {
-    const { data, error } = await supabase.storage
-      .from('documenti')
-      .download(doc.file_path)
+    const { data, error } = await supabase.storage.from('documenti').download(doc.file_path)
     if (error) {
       alert('Errore download')
       return
@@ -97,38 +97,48 @@ export default function Documenti() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-slate-800">Documenti</h1>
         <button
+          type="button"
           onClick={() => setShowUpload(true)}
-          className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-teal-700"
+          className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-medium"
         >
           <Upload size={16} /> Carica
         </button>
       </div>
 
-      {/* Filtri categoria */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button
+          type="button"
           onClick={() => setFiltro('tutti')}
-          className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${filtro === 'tutti' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 border'}`}
+          className={
+            'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ' +
+            (filtro === 'tutti' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 border')
+          }
         >
           Tutti
         </button>
         {Object.entries(CATEGORIE).map(([k, v]) => (
           <button
             key={k}
+            type="button"
             onClick={() => setFiltro(k)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${filtro === k ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 border'}`}
+            className={
+              'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ' +
+              (filtro === k ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 border')
+            }
           >
             {v}
           </button>
         ))}
       </div>
 
-      {showUpload && (
+      {showUpload ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-lg">Carica documento</h2>
-              <button onClick={() => setShowUpload(false)}><X size={20} /></button>
+              <button type="button" onClick={() => setShowUpload(false)}>
+                <X size={20} />
+              </button>
             </div>
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
@@ -136,7 +146,7 @@ export default function Documenti() {
                 <input
                   value={form.titolo}
                   onChange={(e) => setForm({ ...form, titolo: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5"
                   placeholder="Nome del documento"
                 />
               </div>
@@ -145,33 +155,37 @@ export default function Documenti() {
                 <select
                   value={form.categoria}
                   onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5"
                 >
                   {Object.entries(CATEGORIE).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">File (PDF, immagini...)</label>
+                <label className="block text-sm font-medium mb-1">File</label>
                 <input
                   type="file"
                   required
-                  onChange={(e) => setForm({ ...form, file: e.target.files[0] })}
+                  onChange={(e) =>
+                    setForm({ ...form, file: e.target.files && e.target.files[0] ? e.target.files[0] : null })
+                  }
                   className="w-full text-sm"
                 />
               </div>
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full bg-teal-600 text-white py-3 rounded-xl font-medium hover:bg-teal-700 disabled:opacity-60"
+                className="w-full bg-teal-600 text-white py-3 rounded-xl font-medium disabled:opacity-60"
               >
                 {uploading ? 'Caricamento...' : 'Carica documento'}
               </button>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
 
       {loading ? (
         <div className="text-center py-8 text-slate-400">Caricamento...</div>
@@ -191,13 +205,15 @@ export default function Documenti() {
                 <h3 className="font-medium text-slate-800 truncate">{d.titolo}</h3>
                 <p className="text-xs text-slate-400">
                   {CATEGORIE[d.categoria] || d.categoria}
-                  {d.created_at && ` · ${format(new Date(d.created_at), 'd MMM yyyy', { locale: it })}`}
+                  {d.created_at
+                    ? ' · ' + format(new Date(d.created_at), 'd MMM yyyy', { locale: it })
+                    : ''}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => download(d)}
                 className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg"
-                title="Scarica"
               >
                 <Download size={18} />
               </button>

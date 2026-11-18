@@ -3,7 +3,6 @@ import { useAuth } from '../../context/AuthContext'
 import {
   Calendar,
   FileText,
-  AlertTriangle,
   ClipboardList,
   ExternalLink,
   Wrench,
@@ -24,10 +23,6 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Link to="/app/segnalazioni" className="flex items-center gap-3 p-4 rounded-xl bg-orange-50 text-orange-700">
-          <AlertTriangle size={22} />
-          <span className="text-sm font-medium">Nuova segnalazione</span>
-        </Link>
         <Link to="/app/documenti" className="flex items-center gap-3 p-4 rounded-xl bg-blue-50 text-blue-700">
           <FileText size={22} />
           <span className="text-sm font-medium">Documenti</span>
