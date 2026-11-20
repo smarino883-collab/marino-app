@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Building2, Wrench, Shield } from 'lucide-react'
 import InstallPrompt from '../components/InstallPrompt'
-import { enablePush, pushSupported } from '../lib/push'
 
 export default function Login() {
   const [tab, setTab] = useState('condomino')
@@ -15,13 +14,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { loginWithCode, loginFornitore, loginAdmin } = useAuth()
   const navigate = useNavigate()
-
-  async function tryEnablePush(meta) {
-    try {
-      if (!pushSupported()) return
-      await enablePush(meta)
-    } catch (_) {}
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -36,23 +28,11 @@ export default function Login() {
       if (tab === 'condomino') {
         result = await loginWithCode(codice)
         if (result.error) throw new Error(result.error)
-        await tryEnablePush({
-          ruolo: 'condomino',
-          user_id: result.data && result.data.user ? result.data.user.id : null,
-          condominio_id:
-            result.data && result.data.condominio ? result.data.condominio.id : null,
-        })
         if (result.data && result.data.needsContact) navigate('/app/completa-profilo')
         else navigate('/app')
       } else if (tab === 'fornitore') {
         result = await loginFornitore(codice)
         if (result.error) throw new Error(result.error)
-        await tryEnablePush({
-          ruolo: 'fornitore',
-          user_id: result.data && result.data.user ? result.data.user.id : null,
-          fornitore_id:
-            result.data && result.data.fornitore ? result.data.fornitore.id : null,
-        })
         navigate('/fornitore')
       } else {
         result = await loginAdmin(email, password)
