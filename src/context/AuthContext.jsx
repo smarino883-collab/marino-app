@@ -57,7 +57,8 @@ export function AuthProvider({ children }) {
       if (raw) contatto = JSON.parse(raw)
     } catch (_) {}
 
-    const hasEmail = !!(contatto && contatto.email)
+    const hasNome = !!(contatto && contatto.nome && String(contatto.nome).trim().length >= 3)
+
     const session = {
       user: { id: sessionId, tipo: 'condomino' },
       profile: {
@@ -68,37 +69,44 @@ export function AuthProvider({ children }) {
         session_key: sessionId,
       },
       condominio: condo,
-      needsContact: !hasEmail,
+      needsContact: !hasNome,
     }
     persist(session)
     return { data: session }
   }
 
-  const saveCondominoContact = async ({ nome, email, unita, skip }) => {
+  const saveCondominoContact = async ({ nome, email, unita }) => {
     if (!condominio || !profile || profile.type !== 'condomino') {
       return { error: 'Sessione non valida' }
     }
-    if (skip) {
-      const session = { user, profile: { ...profile }, condominio, needsContact: false }
-      persist(session)
-      return { data: session }
+
+    const nomeClean = (nome || '').trim()
+    if (nomeClean.length < 3) {
+      return { error: 'Inserisci nome e cognome' }
     }
+
     const emailClean = (email || '').trim().toLowerCase()
+    if (emailClean && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
+      return { error: 'Email non valida' }
+    }
+
     const payload = {
-      nome: (nome || '').trim(),
-      email: emailClean,
+      nome: nomeClean,
+      email: emailClean || '',
       unita: (unita || '').trim(),
     }
+
     try {
       localStorage.setItem('marino_contatto_' + condominio.id, JSON.stringify(payload))
       await supabase.from('condomini_contatti').insert({
         condominio_id: condominio.id,
-        nome: payload.nome || null,
+        nome: payload.nome,
         email: payload.email || null,
         unita: payload.unita || null,
         attivo: true,
       })
     } catch (_) {}
+
     const session = {
       user,
       profile: { ...profile, ...payload },
@@ -109,14 +117,10 @@ export function AuthProvider({ children }) {
     return { data: session }
   }
 
-    const loginFornitore = async (codice) => {
+  const loginFornitore = async (codice) => {
     const code = (codice || '').trim().replace(/\s/g, '').toUpperCase()
-    if (!code) {
-      return { error: 'Inserisci il codice fornitore' }
-    }
-    if (code.length < 4) {
-      return { error: 'Codice troppo corto' }
-    }
+    if (!code) return { error: 'Inserisci il codice fornitore' }
+    if (code.length < 4) return { error: 'Codice troppo corto' }
     if (!/^[A-Z0-9]+$/.test(code)) {
       return { error: 'Il codice puo contenere solo lettere e numeri' }
     }
@@ -128,12 +132,8 @@ export function AuthProvider({ children }) {
       .eq('attivo', true)
       .maybeSingle()
 
-    if (error) {
-      return { error: 'Errore di verifica codice. Riprova.' }
-    }
-    if (!fornitore) {
-      return { error: 'Codice non valido o fornitore non attivo' }
-    }
+    if (error) return { error: 'Errore di verifica codice. Riprova.' }
+    if (!fornitore) return { error: 'Codice non valido o fornitore non attivo' }
 
     const session = {
       user: { id: fornitore.id, tipo: 'fornitore' },
